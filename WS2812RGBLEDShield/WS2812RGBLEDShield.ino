@@ -21,6 +21,13 @@
 *		are a virtual 5th strip at the backside to become an equally divided shine at
 *		the top plate.
 *
+* HowTo:
+* ------
+* LED::setColorToAllLEDs(uint8_t strip, uint32_t color)
+* or LED::setColor(uint8_t strip, uint8_t fromLed, uint8_t toLed, uint32_t color)
+* or LED::setColor(uint8_t strip, uint8_t led, uint32_t color)
+* and LED::show(uint8_t strip)
+*
 * Created:			19.05.2014
 * Last updated:		29.07.2014
 * Author:			Florian Probst
@@ -38,46 +45,50 @@
 #define PORT3 2
 #define PORT4 3
 
-uint16_t port1_number_of_leds = 120;
-uint16_t port2_number_of_leds = 5;
-uint16_t port3_number_of_leds = 5; //59
-uint16_t port4_number_of_leds = 5;
+const uint8_t port1_number_of_leds = 240;  // 0 is not allowed
+const uint8_t port2_number_of_leds = 5; // 0 is not allowed
+const uint8_t port3_number_of_leds = 5; // 0 is not allowed
+const uint8_t port4_number_of_leds = 5; // 0 is not allowed
 
-uint8_t port1_brightness = 25;
-uint8_t port2_brightness = 25;
-uint8_t port3_brightness = 25;
-uint8_t port4_brightness = 25;
-//#endif
-/** END CONFIGURATION **/
+const uint8_t port1_brightness = 20;
+const uint8_t port2_brightness = 25;
+const uint8_t port3_brightness = 25;
+const uint8_t port4_brightness = 25;
 
 const uint32_t color1 = DEEPSKYBLUE; //LIME;
-//uint32_t color2 = 0x00AE00;
-//uint32_t color3 = 0x006E00;
-//uint32_t color4 = 0x004800;
-//uint32_t color5 = 0x001F00;
-
 const uint32_t color2 = WHITE;
+const uint32_t color3 = 0x006E00;
+const uint32_t color4 = 0x004800;
+const uint32_t color5 = 0x001F00;
+
+const uint8_t fxSpeed = 10; //faster than 50 will cause light-bugs (seen at 50 leds on one strip)
+const uint8_t fxLimit = 240; //the effect runs to light nr.
+
+/*const uint32_t color2 = WHITE;
 const uint32_t color3 = WHITE;
 const uint32_t color4 = WHITE;
-const uint32_t color5 = WHITE;
+const uint32_t color5 = WHITE;*/
 
 const uint8_t port1_pin = 2;
 const uint8_t port2_pin = 4;
 const uint8_t port3_pin = 7;
 const uint8_t port4_pin = 12;
+const uint8_t endstop_opened_pin = 31;
+const uint8_t endstop_closed_pin = 33;
 
 Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(port1_number_of_leds, port1_pin, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(port2_number_of_leds, port2_pin, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip3 = Adafruit_NeoPixel(port3_number_of_leds, port3_pin, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip4 = Adafruit_NeoPixel(port4_number_of_leds, port4_pin, NEO_GRB + NEO_KHZ800);
 
-//faster than 50 will cause light-bugs (seen at 50 leds on one strip)
-TimedAction fxKnightRiderAction = TimedAction(50, fxKnightRider);
+TimedAction fxKnightRiderAction = TimedAction(fxSpeed, fxKnightRider);
 
 bool fxKnightRiderInitialized[4];
 uint8_t fxKnightRiderDirection[4];
 uint16_t fxKnightRiderPos[4];
 bool fxKnightRiderEnabled[4];
+bool endstop_processed = false;
+
 
 namespace LED {
 	typedef struct {
@@ -88,16 +99,6 @@ namespace LED {
 	} Strip;
 
 	Strip strips[4];
-
-	//void setColorToAllLEDs(Strip* strip, uint32_t color){
-	//for(int i=0; i<strip->leds; i++){
-	//strip->neopixel->setPixelColor(i, color);
-	//}
-	//}
-	//
-	//void setColorToAllLEDs(uint8_t strip, uint32_t color){
-	//setColorToAllLEDs(&strips[strip], color);
-	//}
 
 	void setColorToAllLEDs(uint8_t strip, uint32_t color) {
 		for (int i = 0; i < strips[strip].leds; i++) {
@@ -175,29 +176,14 @@ void setup()
 	Serial.print(F("System started. Free SRAM: "));
 	Serial.println(freeMemory());
 
-	LED::setColorToAllLEDs(PORT1, BLUE);
-	LED::setColorToAllLEDs(PORT2, BLUE);
-	LED::setColor(PORT3, 0, 3, BLUE);		//strip 5 connected to port 3 (back side)
-	LED::setColor(PORT3, 4, 59, BLUE);		//strip 4 connected to port 3 (left side)
-	LED::setColorToAllLEDs(PORT4, BLUE);
+	//configure endstops
+	pinMode(endstop_closed_pin, INPUT);
+	pinMode(endstop_opened_pin, INPUT);
+	delay(1000);
+	initFxKnightRider();
+}
 
-	//LED::setColor(PORT1, 0, 52, LIME);
-	//LED::setColor(PORT2, 0, 52, LIME);
-	//LED::setColor(PORT3, 4, 56, LIME);
-	//LED::setColor(PORT4, 0, 52, LIME);
-	//
-	//LED::setColor(PORT1, 53, 55, BLUE);
-	//LED::setColor(PORT2, 53, 55, BLUE);
-	//LED::setColor(PORT3, 0, 3, BLUE);
-	//LED::setColor(PORT3, 57, 59, BLUE);
-	//LED::setColor(PORT4, 53, 55, BLUE);
-	LED::show(PORT1);
-	LED::show(PORT2);
-	LED::show(PORT3);
-	LED::show(PORT4);
-
-	delay(2000);
-
+void initFxKnightRider() {
 	//initialize all strips for knightrider effect
 	for (int strip = 0; strip < 4; strip++) {
 		if (fxKnightRiderEnabled[strip]) {
@@ -214,6 +200,30 @@ void setup()
 
 void loop()
 {
+	if (endstop_processed) {
+		LED::setColorToAllLEDs(PORT1, color1);
+		LED::show(PORT1);
+		initFxKnightRider();
+		endstop_processed = false;
+	}
+	
+	while (digitalRead(endstop_closed_pin) == true) {
+		if (!endstop_processed) {
+			LED::setColorToAllLEDs(PORT1, RED);
+			LED::show(PORT1);
+			endstop_processed = true;
+			delay(200);
+		}
+	}
+
+	while (digitalRead(endstop_opened_pin) == true) {
+		if (!endstop_processed) {
+			LED::setColorToAllLEDs(PORT1, GREEN); 
+			LED::show(PORT1);
+			endstop_processed = true;
+			delay(200);
+		}
+	}
 	fxKnightRiderAction.check();
 	//Serial.println(millis());
 	//delay(1000);
@@ -223,8 +233,8 @@ void fxKnightRider() {
 	for (int strip = 0; strip < 4; strip++) {
 		if (fxKnightRiderDirection[strip] == 1) {			//from first to last led
 			int p = fxKnightRiderPos[strip];
-			if (p <= 55) {
-				if (strip == 2) { // which will be our port 3 strip, that has 4 additional LEDs at the back side (first 4 leds)
+			if (p <= fxLimit) {
+				/*if (strip == 2) { // which will be our port 3 strip, that has 4 additional LEDs at the back side (first 4 leds)
 								  //virtual 5th strip (back side) hack
 					LED::setColor(strip, p + 4 - 7, p + 4, color2);
 					LED::setColor(strip, p + 4 - 8, color1);
@@ -234,20 +244,20 @@ void fxKnightRider() {
 					if (p <= 51) LED::setColor(strip, 0, 0, color2);
 					if (p <= 45) LED::setColor(strip, 0, 3, color1); //show green.
 				}
-				else {
+				else {*/
 					LED::setColor(strip, p - 7, p, color2);
 					LED::setColor(strip, p - 8, color1);
-				}
+				//}
 			}
 			fxKnightRiderPos[strip]++;
-			if (fxKnightRiderPos[strip] == 55) { // this constant is not good, but fastest way to get it work. All strips have 55 led's
-				fxKnightRiderPos[strip] = 54;
+			if (fxKnightRiderPos[strip] == fxLimit) { 
+				fxKnightRiderPos[strip] = fxLimit - 1;
 				fxKnightRiderDirection[strip] = 0; //change direction from last to first led
 			}
 		}
 		if (fxKnightRiderDirection[strip] == 0) {			//from last to first led
 			int p = fxKnightRiderPos[strip];
-			if (strip == 2) { // which will be our port 3 strip, that has 4 additional LEDs at the back side (first 4 leds)
+			/*if (strip == 2) { // which will be our port 3 strip, that has 4 additional LEDs at the back side (first 4 leds)
 							  //virtual 5th strip (back side) hack
 				LED::setColor(strip, p + 4, p + 4 + 7, color2);
 				LED::setColor(strip, p + 4 + 8, color1);
@@ -257,10 +267,10 @@ void fxKnightRider() {
 				if (p <= 43) LED::setColor(strip, 0, 3, color1);
 
 			}
-			else {
+			else {*/
 				LED::setColor(strip, p, p + 7, color2);
 				LED::setColor(strip, p + 8, color1);
-			}
+			//}
 			fxKnightRiderPos[strip]--;
 			if (fxKnightRiderPos[strip] == -1) { // this constant is not good, but fastest way to get it work. All strips have 55 led's
 				fxKnightRiderPos[strip]++;
